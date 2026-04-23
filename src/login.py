@@ -251,10 +251,10 @@ def wait_for_login_success(page, settings, timeout_seconds: int) -> bool:
         login_markers = ["iniciar sesi", "login", "clave sol", "usuario", "contrase"]
         authenticated_markers = [
             "menu sol",
-            "menú sol",
+            "menu sol",
             "bienvenido",
             "cerrar sesi",
-            "mis trámites y consultas",
+            "mis tramites y consultas",
             "mis tramites y consultas",
         ]
 
