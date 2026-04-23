@@ -32,7 +32,7 @@ def auth_login():
 
     try:
         result = perform_login(timeout_seconds=timeout_seconds, debug=debug)
-        status = 200 if result.get("ok") else 408
+        status = 200 if result.get("ok") else 422
         return jsonify(result), status
     except ValueError as exc:
         return jsonify({"ok": False, "message": str(exc)}), 400
@@ -55,12 +55,24 @@ def auth_token():
             404,
         )
 
+    token = snapshot.get("primary_token")
+    if not token:
+        return (
+            jsonify(
+                {
+                    "ok": False,
+                    "message": "No se encontro un token reutilizable en el navegador.",
+                    "current_url": snapshot.get("current_url"),
+                }
+            ),
+            404,
+        )
+
     return jsonify(
         {
             "ok": True,
-            "token_candidates": snapshot.get("token_candidates", []),
+            "token": token,
             "current_url": snapshot.get("current_url"),
-            "notes": snapshot.get("notes", []),
         }
     )
 

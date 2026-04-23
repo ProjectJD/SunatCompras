@@ -84,9 +84,18 @@ def _extract_tokens_from_text(value: str) -> list[str]:
     ]
     for part in parts:
         key, token_value = part.split("=", 1)
-        if "token" in key.lower() and token_value:
+        lowered = key.lower()
+        if "token" in lowered and token_value:
             results.append(token_value)
     return results
+
+
+def extract_primary_token(snapshot: dict) -> str | None:
+    candidates = snapshot.get("token_candidates", [])
+    for candidate in candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+    return None
 
 
 def build_auth_snapshot(page, context, settings) -> dict:
@@ -151,22 +160,22 @@ def build_auth_snapshot(page, context, settings) -> dict:
             unique_candidates.append(candidate)
             seen.add(candidate)
 
-    return {
+    snapshot = {
         "login_detected": True,
         "captured_at_epoch": int(time.time()),
         "current_url": current_url,
-        "url_contains_success_hint": settings.login_success_url_contains.lower()
-        in current_url.lower(),
+        "current_host": parsed.netloc.lower(),
         "cookies": cookies,
         "cookie_token_candidates": cookie_candidates,
         "storage": storage,
         "storage_token_candidates": storage_candidates,
         "token_candidates": unique_candidates,
         "notes": [
-            "Si token_candidates viene vacio, SUNAT probablemente solo dejo una sesion web y no expuso un access token en el navegador.",
-            "El storage_state de Playwright sigue siendo util para reutilizar la sesion del portal.",
+            "Si no aparece token, este flujo de SUNAT probablemente solo deja sesion web y no un access token reutilizable.",
         ],
     }
+    snapshot["primary_token"] = extract_primary_token(snapshot)
+    return snapshot
 
 
 def attempt_fill_login(page, settings) -> bool:
@@ -219,14 +228,19 @@ def attempt_fill_login(page, settings) -> bool:
 
 def wait_for_login_success(page, settings, timeout_seconds: int) -> bool:
     deadline = time.time() + timeout_seconds
-    success_hint = settings.login_success_url_contains.lower()
+    success_hint = settings.login_success_url_contains.lower().replace("https://", "").replace("http://", "").strip("/")
 
     log("Esperando confirmacion de login. Completa manualmente cualquier paso faltante en el navegador.")
 
     while time.time() < deadline:
         current_url = page.url
-        if success_hint and success_hint in current_url.lower():
-            log(f"Login detectado por URL: {current_url}")
+        parsed = urlparse(current_url)
+        current_host = parsed.netloc.lower()
+        current_url_lower = current_url.lower()
+        in_login_flow = "loginmenusol" in current_url_lower
+
+        if success_hint and current_host == success_hint and not in_login_flow:
+            log(f"Login detectado por host final: {current_url}")
             return True
 
         try:
@@ -234,7 +248,19 @@ def wait_for_login_success(page, settings, timeout_seconds: int) -> bool:
         except Exception:
             page_text = ""
 
-        if "menu sol" in page_text or "menÃº sol" in page_text or "bienvenido" in page_text:
+        login_markers = ["iniciar sesi", "login", "clave sol", "usuario", "contrase"]
+        authenticated_markers = [
+            "menu sol",
+            "menú sol",
+            "bienvenido",
+            "cerrar sesi",
+            "mis trámites y consultas",
+            "mis tramites y consultas",
+        ]
+
+        if any(marker in page_text for marker in authenticated_markers) and not any(
+            marker in page_text for marker in login_markers
+        ):
             log("Login detectado por contenido visible.")
             return True
 
@@ -278,9 +304,7 @@ def perform_login(timeout_seconds: int, debug: bool) -> dict:
                 log("No se detecto el login dentro del tiempo esperado.")
                 return {
                     "ok": False,
-                    "message": "No se detecto el login dentro del tiempo esperado.",
-                    "storage_state_path": str(settings.auth_state_path),
-                    "auth_snapshot_path": str(settings.auth_snapshot_path),
+                    "message": "No se detecto un login real dentro del tiempo esperado.",
                 }
 
             ensure_parent_dir(settings.auth_state_path)
@@ -288,16 +312,20 @@ def perform_login(timeout_seconds: int, debug: bool) -> dict:
 
             snapshot = build_auth_snapshot(page, context, settings)
             write_json(settings.auth_snapshot_path, snapshot)
+            token = extract_primary_token(snapshot)
+
+            if not token:
+                return {
+                    "ok": False,
+                    "message": "El login web termino, pero no se encontro ningun token reutilizable en el navegador.",
+                    "current_url": snapshot["current_url"],
+                }
 
             log(f"Sesion guardada en: {settings.auth_state_path}")
             return {
                 "ok": True,
-                "message": "Login detectado y sesion guardada.",
-                "storage_state_path": str(settings.auth_state_path),
-                "auth_snapshot_path": str(settings.auth_snapshot_path),
-                "token_candidates": snapshot["token_candidates"],
+                "token": token,
                 "current_url": snapshot["current_url"],
-                "notes": snapshot["notes"],
             }
         finally:
             browser.close()
