@@ -29,15 +29,20 @@ class Settings:
     login_success_url_contains: str
     flask_host: str
     flask_port: int
+    refresh_url: str
+    refresh_client_id: str
+    refresh_client_secret: str
     artifacts_dir: Path
     auth_state_path: Path
     auth_snapshot_path: Path
+    token_store_path: Path
 
 
 def load_settings() -> Settings:
     artifacts_dir = BASE_DIR / "artifacts"
     auth_state_path = BASE_DIR / "playwright" / ".auth" / "storage_state.json"
     auth_snapshot_path = artifacts_dir / "auth_snapshot.json"
+    token_store_path = artifacts_dir / "token_store.json"
 
     return Settings(
         login_url=os.getenv("SUNAT_LOGIN_URL", "").strip(),
@@ -51,7 +56,11 @@ def load_settings() -> Settings:
         ).strip(),
         flask_host=os.getenv("FLASK_HOST", "127.0.0.1").strip(),
         flask_port=int(os.getenv("FLASK_PORT", "8000").strip()),
+        refresh_url=os.getenv("SUNAT_REFRESH_URL", "").strip(),
+        refresh_client_id=os.getenv("SUNAT_REFRESH_CLIENT_ID", "").strip(),
+        refresh_client_secret=os.getenv("SUNAT_REFRESH_CLIENT_SECRET", "").strip(),
         artifacts_dir=artifacts_dir,
         auth_state_path=auth_state_path,
         auth_snapshot_path=auth_snapshot_path,
+        token_store_path=token_store_path,
     )

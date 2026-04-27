@@ -6,7 +6,7 @@ Este proyecto sirve para:
 
 1. Abrir el flujo real de login de SUNAT usando tu URL OAuth.
 2. Guardar la sesion del navegador para reutilizarla luego.
-3. Exponer una API Flask para disparar el login y devolver posibles tokens visibles del flujo web.
+3. Exponer una API Flask para disparar el login, guardar el token y reutilizarlo mientras siga vigente.
 
 ## Lo que hace hoy
 
@@ -16,7 +16,10 @@ Este proyecto sirve para:
 - Espera una confirmacion visual de que el login termino.
 - Guarda la sesion en `playwright/.auth/storage_state.json`.
 - Guarda un snapshot de autenticacion en `artifacts/auth_snapshot.json`.
-- Expone endpoints Flask para consultar el estado de la sesion y posibles tokens capturados.
+- Guarda el token en `artifacts/token_store.json`.
+- Valida si el token sigue vigente antes de usarlo.
+- Intenta refresh si existe `refresh_token` y tienes configurado `SUNAT_REFRESH_URL`.
+- Si no puede refrescar, realiza login nuevamente.
 - Incluye un modo de depuracion para inspeccionar la pagina.
 
 ## Estructura
@@ -60,6 +63,9 @@ SLOW_MO_MS=250
 LOGIN_SUCCESS_URL_CONTAINS=e-menu.sunat.gob.pe
 FLASK_HOST=127.0.0.1
 FLASK_PORT=8000
+SUNAT_REFRESH_URL=
+SUNAT_REFRESH_CLIENT_ID=
+SUNAT_REFRESH_CLIENT_SECRET=
 ```
 
 Puedes dejar vacios `SUNAT_RUC`, `SUNAT_USER` y `SUNAT_PASSWORD` si prefieres completar el login manualmente en el navegador.
@@ -116,7 +122,7 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/auth/login -ContentTyp
 
 `GET /auth/token`
 
-Devuelve posibles tokens visibles que se hayan podido extraer del flujo web.
+Devuelve el token guardado y si sigue vigente.
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/auth/token
@@ -128,6 +134,22 @@ Devuelve el snapshot completo de autenticacion y confirma si la sesion guardada 
 
 ```powershell
 Invoke-RestMethod http://127.0.0.1:8000/auth/session
+```
+
+`POST /auth/ensure`
+
+Valida el token guardado. Si sigue vigente lo reutiliza; si no, intenta refresh y si tampoco aplica, vuelve a loguearse.
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/auth/ensure
+```
+
+`POST /consultacompras/xml`
+
+Recibe los parametros base del comprobante, garantiza un token vigente, consulta SUNAT y devuelve el XML extraido del ZIP.
+
+```powershell
+Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/consultacompras/xml -ContentType "application/json" -Body '{"ruc":"20549087681","tipo_documento":"01","serie_documento":"FA04","numero_documento":"6551"}'
 ```
 
 ## Sobre el "token"
@@ -152,6 +174,7 @@ Eso significa que la automatizacion del portal puede seguir funcionando aunque n
 
 - `playwright/.auth/storage_state.json`
 - `artifacts/auth_snapshot.json`
+- `artifacts/token_store.json`
 - `artifacts/last_page.html`
 - `artifacts/last_page.png`
 

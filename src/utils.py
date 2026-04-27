@@ -10,26 +10,35 @@ def ensure_parent_dir(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
 
 
+def _pick_existing(locator: Locator) -> Locator | None:
+    try:
+        if locator.count() == 0:
+            return None
+        candidate = locator.first
+        try:
+            if candidate.is_visible():
+                return candidate
+        except Exception:
+            pass
+        return candidate
+    except Exception:
+        return None
+
+
 def first_visible_locator(page: Page, selectors: list[str]) -> Locator | None:
     for selector in selectors:
-        locator = page.locator(selector).first
-        try:
-            if locator.is_visible(timeout=1500):
-                return locator
-        except Exception:
-            continue
+        locator = _pick_existing(page.locator(selector))
+        if locator is not None:
+            return locator
     return None
 
 
 def first_visible_locator_in_frames(page: Page, selectors: list[str]) -> Locator | None:
     for frame in page.frames:
         for selector in selectors:
-            locator = frame.locator(selector).first
-            try:
-                if locator.is_visible(timeout=1000):
-                    return locator
-            except Exception:
-                continue
+            locator = _pick_existing(frame.locator(selector))
+            if locator is not None:
+                return locator
     return None
 
 
